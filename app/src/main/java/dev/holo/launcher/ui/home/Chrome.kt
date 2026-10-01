@@ -56,6 +56,10 @@ import dev.holo.launcher.ui.theme.HoloColors
 import dev.holo.launcher.ui.theme.HoloIcons
 import dev.holo.launcher.ui.theme.HoloType
 import dev.holo.launcher.ui.theme.LocalHolo
+import dev.holo.launcher.ui.theme.HoloMetrics
+import dev.holo.launcher.ui.components.holoShape
+import dev.holo.launcher.ui.components.scaledRadius
+import androidx.compose.ui.graphics.lerp
 import dev.holo.launcher.ui.util.openIntent
 
 @Composable
@@ -71,7 +75,7 @@ fun SearchBar(
         val text = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
         if (!text.isNullOrBlank()) onQuery(text)
     }
-    HoloCard(modifier.height(44.dp), radius = 22.dp, padding = 0.dp) {
+    HoloCard(modifier.height(44.dp), radius = if (HoloMetrics.cut) HoloMetrics.radius.dp else 22.dp, padding = 0.dp, depth = 0.8f) {
         Row(
             Modifier.fillMaxSize().padding(start = 15.dp, end = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -192,7 +196,7 @@ private val tabIcons = mapOf(
 
 @Composable
 fun NavBar(tab: Tab, onTab: (Tab) -> Unit, badges: Map<Tab, Int>, modifier: Modifier = Modifier) {
-    HoloCard(modifier.height(64.dp), radius = 20.dp, padding = 5.dp) {
+    HoloCard(modifier.height(64.dp), radius = (HoloMetrics.radius * 1.25f).dp, padding = 5.dp, depth = 1f) {
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             Tab.entries.forEach { t ->
                 NavTab(t, t == tab, badges[t] ?: 0, Modifier.weight(1f).fillMaxHeight()) { onTab(t) }
@@ -203,17 +207,22 @@ fun NavBar(tab: Tab, onTab: (Tab) -> Unit, badges: Map<Tab, Int>, modifier: Modi
 
 @Composable
 private fun NavTab(tab: Tab, selected: Boolean, badge: Int, modifier: Modifier, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(11.dp)
+    val shape = holoShape(scaledRadius(11.dp))
     val bg = if (selected) {
-        Brush.verticalGradient(listOf(Color(0x8C768EAC), Color(0x8C465870)))
+        Brush.verticalGradient(
+            listOf(
+                lerp(HoloColors.PanelTop, HoloColors.Border, 0.35f).copy(alpha = 0.6f),
+                lerp(HoloColors.PanelMid, HoloColors.Border, 0.18f).copy(alpha = 0.6f),
+            )
+        )
     } else {
-        Brush.verticalGradient(listOf(Color(0xB8161E28), Color(0xB8161E28)))
+        Brush.verticalGradient(listOf(HoloColors.PanelBottom.copy(alpha = 0.72f), HoloColors.PanelBottom.copy(alpha = 0.72f)))
     }
     Box(
         modifier
             .clip(shape)
             .background(bg)
-            .border(1.dp, if (selected) Color(0x99C8DCF2) else Color(0x2996B0CE), shape)
+            .border(1.dp, HoloColors.Border.copy(alpha = if (selected) 0.6f else 0.16f), shape)
             .clickable(role = Role.Tab, onClick = onClick),
     ) {
         Column(
@@ -221,9 +230,9 @@ private fun NavTab(tab: Tab, selected: Boolean, badge: Int, modifier: Modifier, 
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            val color = if (selected) Color(0xFFF4F8FB) else Color(0xFFA7B5C5)
+            val color = if (selected) HoloColors.TextBright else HoloColors.TextMid
             Icon(tabIcons.getValue(tab), null, tint = color, modifier = Modifier.size(19.dp))
-            Text(tab.label, style = HoloType.tab.copy(color = color), maxLines = 1)
+            if (LocalHolo.current.navLabels) Text(tab.label, style = HoloType.tab.copy(color = color), maxLines = 1)
         }
         if (selected) {
             Box(
@@ -233,7 +242,7 @@ private fun NavTab(tab: Tab, selected: Boolean, badge: Int, modifier: Modifier, 
                     .fillMaxWidth(0.44f)
                     .height(2.dp)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(HoloColors.Orange)
+                    .background(HoloColors.Highlight)
             )
         }
         if (badge > 0) {

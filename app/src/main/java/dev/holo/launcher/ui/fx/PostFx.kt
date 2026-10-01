@@ -36,7 +36,7 @@ import java.util.Random
  * No scanlines. Purely visual; never intercepts touches.
  */
 @Composable
-fun PostFxOverlay(strength: Float, animate: Boolean) {
+fun PostFxOverlay(grainAmount: Float, vignette: Float, sweepOn: Boolean, animate: Boolean) {
     val noise = remember { noiseBitmap(128) }
     val grain = remember(noise) { ShaderBrush(ImageShader(noise, TileMode.Repeated, TileMode.Repeated)) }
     val frame = remember { mutableIntStateOf(0) }
@@ -48,7 +48,7 @@ fun PostFxOverlay(strength: Float, animate: Boolean) {
             }
         }
     }
-    val sweep: State<Float> = if (animate) {
+    val sweep: State<Float> = if (animate && sweepOn) {
         rememberInfiniteTransition(label = "fx").animateFloat(
             initialValue = 0f, targetValue = 1f,
             animationSpec = infiniteRepeatable(tween(14000, easing = LinearEasing)),
@@ -60,7 +60,7 @@ fun PostFxOverlay(strength: Float, animate: Boolean) {
 
     Canvas(Modifier.fillMaxSize()) {
         val s = sweep.value
-        if (s < 0.55f) {
+        if (sweepOn && s < 0.55f) {
             val p = s / 0.55f
             val band = 90.dp.toPx()
             val x = -band * 2f + p * (size.width + band * 4f)
@@ -72,19 +72,19 @@ fun PostFxOverlay(strength: Float, animate: Boolean) {
                     ),
                     topLeft = Offset(x - band / 2f, -size.height * 0.2f),
                     size = Size(band, size.height * 1.4f),
-                    alpha = strength,
                 )
             }
         }
-        drawRect(
+        if (vignette > 0.01f) drawRect(
             Brush.radialGradient(
                 0.58f to Color.Transparent,
                 1f to Color(0x8C000308),
                 center = Offset(size.width / 2f, size.height * 0.48f),
                 radius = size.maxDimension * 0.62f,
             ),
-            alpha = strength,
+            alpha = vignette,
         )
+        if (grainAmount <= 0.01f) return@Canvas
         val f = frame.intValue
         val ox = ((f * 37) % 128).toFloat()
         val oy = ((f * 61) % 128).toFloat()
@@ -93,7 +93,7 @@ fun PostFxOverlay(strength: Float, animate: Boolean) {
                 grain,
                 topLeft = Offset.Zero,
                 size = Size(size.width + 128f, size.height + 128f),
-                alpha = 0.10f * strength,
+                alpha = 0.2f * grainAmount,
                 blendMode = BlendMode.Overlay,
             )
         }

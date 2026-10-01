@@ -55,11 +55,13 @@ fun DeviceHologram(
     val style = LocalHolo.current
     val holo = style.holo
     val animate = !style.lowPower
+    val spinning = animate && style.holoSpin > 0.05f
+    val spinMs = (11000f / style.holoSpin.coerceAtLeast(0.05f)).toInt()
     val transition = rememberInfiniteTransition(label = "hologram")
-    val spin: androidx.compose.runtime.State<Float> = if (animate) {
+    val spin: androidx.compose.runtime.State<Float> = if (spinning) {
         transition.animateFloat(
             initialValue = -38f, targetValue = 38f,
-            animationSpec = infiniteRepeatable(tween(11000, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            animationSpec = infiniteRepeatable(tween(spinMs, easing = FastOutSlowInEasing), RepeatMode.Reverse),
             label = "spin",
         )
     } else {
@@ -84,7 +86,7 @@ fun DeviceHologram(
         val pitch = { 14f - extraTilt.value.y * 2f }
 
         // Light beam from projector up to the phone (blurred so it reads as volumetric).
-        Canvas(Modifier.fillMaxSize().blur(4.dp, BlurredEdgeTreatment.Unbounded)) {
+        if (style.holoBeam) Canvas(Modifier.fillMaxSize().blur(4.dp, BlurredEdgeTreatment.Unbounded)) {
             val cx = size.width / 2f
             val top = phoneTop.toPx() + 6.dp.toPx()
             val bottom = projY.toPx()
@@ -131,10 +133,12 @@ fun DeviceHologram(
             .align(Alignment.TopCenter)
             .offset(y = phoneTop)
             .size(phoneW, phoneH)
-        PhoneStack(
-            stackModifier.blur(7.dp, BlurredEdgeTreatment.Unbounded).graphicsLayer { alpha = 0.75f },
-            angle, pitch, holo, batteryFraction, charging,
-        )
+        if (style.holoBloom) {
+            PhoneStack(
+                stackModifier.blur(7.dp, BlurredEdgeTreatment.Unbounded).graphicsLayer { alpha = 0.75f },
+                angle, pitch, holo, batteryFraction, charging,
+            )
+        }
         PhoneStack(stackModifier, angle, pitch, holo, batteryFraction, charging)
 
         // Scan line and motes.

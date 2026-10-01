@@ -47,20 +47,24 @@ fun Backdrop(
     grade: Float,
     tint: Color,
     tilt: State<Offset>,
+    dim: Float = 0.15f,
+    parallax: Float = 0.5f,
 ) {
     Box(
         Modifier
             .fillMaxSize()
             .graphicsLayer {
                 val t = tilt.value
-                scaleX = 1.08f
-                scaleY = 1.08f
-                translationX = -t.x * 6.dp.toPx()
-                translationY = t.y * 6.dp.toPx()
+                val k = 0.4f + parallax * 1.6f
+                scaleX = 1.08f + parallax * 0.08f
+                scaleY = 1.08f + parallax * 0.08f
+                translationX = -t.x * k * 2.dp.toPx()
+                translationY = t.y * k * 2.dp.toPx()
             }
     ) {
         StaticBackdrop(Modifier.fillMaxSize())
         if (useCamera) CameraBackdrop(Modifier.fillMaxSize(), blur, grade, tint)
+        if (dim > 0.01f) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dim * 0.8f)))
     }
     // Keeps the real status bar readable over bright scenes.
     Box(

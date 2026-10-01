@@ -8,6 +8,7 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import dev.holo.launcher.ui.HoloRoot
+import dev.holo.launcher.ui.theme.HoloTheme
 import kotlinx.coroutines.flow.MutableSharedFlow
 
 class MainActivity : ComponentActivity() {
@@ -23,6 +24,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         window.isNavigationBarContrastEnforced = false
         val container = (application as HoloApplication).container
+        HoloTheme.apply(container.settings.state.value)
         setContent { HoloRoot(container = container, homePresses = homePresses) }
     }
 

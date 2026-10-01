@@ -69,6 +69,9 @@ import dev.holo.launcher.ui.theme.HoloColors
 import dev.holo.launcher.ui.theme.HoloIcons
 import dev.holo.launcher.ui.theme.HoloType
 import dev.holo.launcher.ui.theme.LocalHolo
+import dev.holo.launcher.ui.theme.HoloMetrics
+import dev.holo.launcher.ui.components.holoShape
+import dev.holo.launcher.ui.components.scaledRadius
 import dev.holo.launcher.ui.util.openIntent
 import kotlinx.coroutines.delay
 
@@ -119,7 +122,7 @@ private fun holoMatrix(tint: Color): ColorFilter {
 fun AppTile(app: AppEntry, m: LauncherModel, modifier: Modifier = Modifier) {
     val haptics = LocalHapticFeedback.current
     var menu by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(10.dp)
+    val shape = holoShape(scaledRadius(10.dp))
     val badge = m.badges[app.packageName] ?: 0
     Box(modifier) {
         Column(
@@ -192,7 +195,7 @@ fun AppsPage(m: LauncherModel, modifier: Modifier = Modifier) {
 fun CommsPage(m: LauncherModel, modifier: Modifier = Modifier) {
     val commsSet = m.commsPackages
     val commsApps = remember(m.apps, commsSet) { m.apps.filter { it.packageName in commsSet } }
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(HoloMetrics.gap.dp)) {
         HoloCard(Modifier.fillMaxWidth().bootIn(0, m.bootTick, !m.settings.lowPower)) {
             HeaderPill("QUICK COMMS", HoloIcons.Comms)
             Row(Modifier.fillMaxWidth().height(66.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -231,7 +234,7 @@ private fun QuickTile(label: String, icon: ImageVector, pkg: String?, m: Launche
 @Composable
 fun MediaPage(m: LauncherModel, modifier: Modifier = Modifier) {
     val mediaApps = remember(m.apps) { m.apps.filter { it.category in AppRepository.MEDIA_CATEGORIES } }
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(HoloMetrics.gap.dp)) {
         NowPlayingCard(m, Modifier.fillMaxWidth().height(156.dp).bootIn(0, m.bootTick, !m.settings.lowPower))
         HoloCard(Modifier.fillMaxWidth().weight(1f).bootIn(1, m.bootTick, !m.settings.lowPower)) {
             HeaderPill("MEDIA APPS", HoloIcons.Media)
@@ -312,7 +315,7 @@ fun ToolsPage(m: LauncherModel, modifier: Modifier = Modifier) {
         ToolItem("SYSTEM", HoloIcons.Tools) { openIntent(context, Intent(Settings.ACTION_SETTINGS)) },
     )
     val utilities = remember(m.apps) { m.apps.filter { it.category in AppRepository.UTILITY_CATEGORIES } }
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(HoloMetrics.gap.dp)) {
         HoloCard(Modifier.fillMaxWidth().bootIn(0, m.bootTick, !m.settings.lowPower)) {
             HeaderPill("SYSTEM CONTROL", HoloIcons.Tools)
             tools.chunked(4).forEach { row ->

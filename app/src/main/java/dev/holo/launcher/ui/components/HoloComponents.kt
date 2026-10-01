@@ -20,11 +20,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,15 +37,20 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.PaintingStyle
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.addOutline
+import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
@@ -55,11 +62,62 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import dev.holo.launcher.ui.theme.HoloColors
+import dev.holo.launcher.ui.theme.HoloMetrics
 import dev.holo.launcher.ui.theme.HoloType
-import dev.holo.launcher.ui.theme.LocalHolo
+import dev.holo.launcher.ui.theme.LocalTilt
 import kotlinx.coroutines.delay
+import kotlin.math.abs
 
-/** Soft light bleeding out around a rounded shape. Draw it before clipping. */
+/** Card / tile outline following the user's corner style and radius. */
+fun holoShape(radius: Dp): Shape =
+    if (HoloMetrics.cut) CutCornerShape(radius * 0.6f) else RoundedCornerShape(radius)
+
+/** Inset radius scaled with the user's corner-radius setting. */
+fun scaledRadius(base: Dp): Dp = base * (HoloMetrics.radius / 16f)
+
+/** Tilt normalised to -1..1 against the configured maximum. */
+fun normTilt(t: Offset): Offset {
+    val m = HoloMetrics.maxTilt.coerceAtLeast(1f)
+    return Offset((t.x / m).coerceIn(-1f, 1f), (t.y / m).coerceIn(-1f, 1f))
+}
+
+/** Cast shadow plus soft rim glow, drawn only outside the shape so the glass stays clean. */
+fun Modifier.cardLighting(shape: Shape, tilt: State<Offset>): Modifier = drawBehind {
+    val glow = HoloMetrics.glow
+    val shadow = HoloMetrics.shadow
+    if (glow <= 0.01f && shadow <= 0.01f) return@drawBehind
+    val outline = shape.createOutline(size, layoutDirection, this)
+    val path = Path().apply { addOutline(outline) }
+    val n = if (HoloMetrics.dynamicLight) normTilt(tilt.value) else Offset.Zero
+    drawIntoCanvas { canvas ->
+        canvas.save()
+        canvas.clipPath(path, ClipOp.Difference)
+        if (shadow > 0.01f) {
+            val p = Paint()
+            val fp = p.asFrameworkPaint()
+            fp.isAntiAlias = true
+            fp.color = android.graphics.Color.TRANSPARENT
+            fp.setShadowLayer(
+                22.dp.toPx(),
+                -n.x * 10.dp.toPx(),
+                8.dp.toPx() + n.y * 8.dp.toPx(),
+                Color.Black.copy(alpha = 0.6f * shadow).toArgb(),
+            )
+            canvas.drawPath(path, p)
+        }
+        if (glow > 0.01f) {
+            val p = Paint()
+            val fp = p.asFrameworkPaint()
+            fp.isAntiAlias = true
+            fp.color = android.graphics.Color.TRANSPARENT
+            fp.setShadowLayer((8f + 14f * glow).dp.toPx(), 0f, 0f, HoloColors.Glow.toArgb())
+            canvas.drawPath(path, p)
+        }
+        canvas.restore()
+    }
+}
+
+/** Kept for callers that want a glow without the full card treatment. */
 fun Modifier.holoGlow(radius: Dp, color: Color = HoloColors.Glow, blur: Dp = 14.dp): Modifier = drawBehind {
     val paint = Paint()
     val fp = paint.asFrameworkPaint()
@@ -70,66 +128,88 @@ fun Modifier.holoGlow(radius: Dp, color: Color = HoloColors.Glow, blur: Dp = 14.
     drawIntoCanvas { it.drawRoundRect(0f, 0f, size.width, size.height, r, r, paint) }
 }
 
-/** The main glass panel: luminous gradient rim, dark translucent fill, sheen and a bottom light catch. */
+/**
+ * The main glass panel. Sits at [depth] (0 = far, 1 = near) for parallax, catches light that
+ * moves with the tilt, casts a soft shadow and glows at the rim.
+ */
 @Composable
 fun HoloCard(
     modifier: Modifier = Modifier,
-    radius: Dp = 16.dp,
+    radius: Dp? = null,
     padding: Dp = 6.dp,
+    depth: Float = 0.5f,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val glass = LocalHolo.current.glass
-    val shape = RoundedCornerShape(radius)
+    val tilt = LocalTilt.current
+    val r = radius ?: HoloMetrics.radius.dp
+    val shape = holoShape(r)
     Column(
         modifier
-            .holoGlow(radius)
+            .graphicsLayer {
+                val t = tilt.value
+                val k = HoloMetrics.depth * depth * 1.6.dp.toPx()
+                translationX = t.x * k
+                translationY = -t.y * k
+            }
+            .cardLighting(shape, tilt)
             .clip(shape)
-            .background(
-                Brush.verticalGradient(
-                    0f to Color(0xFF1F2936).copy(alpha = glass),
-                    0.55f to Color(0xFF121922).copy(alpha = glass),
-                    1f to Color(0xFF0D121A).copy(alpha = glass),
-                )
-            )
             .drawWithContent {
-                drawContent()
+                val g = HoloMetrics.glass
                 drawRect(
-                    Brush.linearGradient(
-                        0f to Color.White.copy(alpha = 0.045f),
-                        0.3f to Color.Transparent,
-                        0.72f to Color.Transparent,
-                        1f to Color.White.copy(alpha = 0.02f),
-                        start = Offset.Zero,
-                        end = Offset(size.width, size.height),
+                    Brush.verticalGradient(
+                        0f to HoloColors.PanelTop.copy(alpha = g),
+                        0.55f to HoloColors.PanelMid.copy(alpha = g),
+                        1f to HoloColors.PanelBottom.copy(alpha = g),
                     )
                 )
+                drawContent()
+                val n = if (HoloMetrics.dynamicLight) normTilt(tilt.value) else Offset.Zero
                 val w = size.width
-                val y = size.height - 1.dp.toPx()
+                val h = size.height
+                drawRect(
+                    Brush.linearGradient(
+                        0f to Color.White.copy(alpha = 0.045f + 0.05f * abs(n.x)),
+                        0.3f to Color.Transparent,
+                        0.72f to Color.Transparent,
+                        1f to Color.White.copy(alpha = 0.02f + 0.03f * abs(n.y)),
+                        start = Offset(w * (-0.1f + n.x * 0.5f), h * (n.y * 0.4f)),
+                        end = Offset(w * (0.9f + n.x * 0.5f), h * (1f + n.y * 0.4f)),
+                    )
+                )
+                val bw = HoloMetrics.borderWidth.dp.toPx()
+                if (bw > 0.05f) {
+                    val b = HoloColors.Border
+                    val br = HoloMetrics.borderBrightness
+                    drawOutline(
+                        shape.createOutline(size, layoutDirection, this),
+                        Brush.linearGradient(
+                            0f to b.copy(alpha = (0.95f * br).coerceIn(0f, 1f)),
+                            0.2f to b.copy(alpha = (0.5f * br).coerceIn(0f, 1f)),
+                            0.74f to b.copy(alpha = (0.36f * br).coerceIn(0f, 1f)),
+                            1f to b.copy(alpha = (0.7f * br).coerceIn(0f, 1f)),
+                            start = Offset(w * (0.5f - n.x * 0.7f), 0f),
+                            end = Offset(w * (0.5f + n.x * 0.7f), h),
+                        ),
+                        style = Stroke(bw * 2f),
+                    )
+                }
+                val y = h - 1.dp.toPx()
+                val cx = w * (0.5f + n.x * 0.2f)
                 drawLine(
                     Brush.horizontalGradient(
-                        listOf(Color.Transparent, Color(0x99D6E8FA), Color.Transparent),
-                        startX = w * 0.22f, endX = w * 0.78f,
+                        listOf(Color.Transparent, HoloColors.Border.copy(alpha = (0.6f * HoloMetrics.borderBrightness).coerceIn(0f, 1f)), Color.Transparent),
+                        startX = cx - w * 0.28f, endX = cx + w * 0.28f,
                     ),
-                    Offset(w * 0.22f, y), Offset(w * 0.78f, y),
+                    Offset(cx - w * 0.28f, y), Offset(cx + w * 0.28f, y),
                     strokeWidth = 1.5.dp.toPx(),
                 )
             }
-            .border(
-                1.5.dp,
-                Brush.verticalGradient(
-                    0f to Color(0x94C6DAF0),
-                    0.18f to Color(0x4D829CBC),
-                    0.74f to Color(0x3868809E),
-                    1f to Color(0x6BA4BEDC),
-                ),
-                shape,
-            )
             .padding(padding),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) { content() }
 }
 
-/** Dark capsule header with icon, spaced caps title and optional trailing controls. */
+/** Header row: a dark capsule (or a plain titled rule) with icon, title and trailing controls. */
 @Composable
 fun HeaderPill(
     title: String,
@@ -137,14 +217,31 @@ fun HeaderPill(
     modifier: Modifier = Modifier,
     trailing: @Composable RowScope.() -> Unit = {},
 ) {
-    val shape = RoundedCornerShape(11.dp)
+    val shape = holoShape(scaledRadius(11.dp))
+    val capsule = HoloMetrics.headerCapsules
+    val chrome = if (capsule) {
+        Modifier
+            .clip(shape)
+            .background(
+                Brush.verticalGradient(
+                    listOf(HoloColors.HeaderFill.copy(alpha = 0.86f), lerp(HoloColors.HeaderFill, Color.Black, 0.2f).copy(alpha = 0.86f))
+                )
+            )
+            .border(1.dp, HoloColors.Border.copy(alpha = 0.26f), shape)
+    } else {
+        Modifier.drawBehind {
+            drawLine(
+                HoloColors.Border.copy(alpha = 0.22f),
+                Offset(0f, size.height - 1.dp.toPx()), Offset(size.width, size.height - 1.dp.toPx()),
+                strokeWidth = 1.dp.toPx(),
+            )
+        }
+    }
     Row(
         modifier
             .fillMaxWidth()
             .height(32.dp)
-            .clip(shape)
-            .background(Brush.verticalGradient(listOf(Color(0xDB090D13), Color(0xDB070A0F))))
-            .border(1.dp, Color(0x4296B2D4), shape)
+            .then(chrome)
             .padding(start = 10.dp, end = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -180,8 +277,15 @@ fun CircleButton(
             Modifier
                 .size(size)
                 .clip(CircleShape)
-                .background(Brush.radialGradient(listOf(Color(0xF2425268), Color(0xF21C2532))))
-                .border(1.2.dp, Color(0x80B2CAE6), CircleShape),
+                .background(
+                    Brush.radialGradient(
+                        listOf(
+                            lerp(HoloColors.PanelTop, Color.White, 0.18f).copy(alpha = 0.95f),
+                            lerp(HoloColors.PanelMid, Color.Black, 0.1f).copy(alpha = 0.95f),
+                        )
+                    )
+                )
+                .border(1.2.dp, HoloColors.Border.copy(alpha = 0.5f), CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             Icon(icon, null, tint = tint, modifier = Modifier.size(iconSize))
@@ -198,7 +302,7 @@ fun SubPanel(
     onClick: (() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    val shape = RoundedCornerShape(radius)
+    val shape = holoShape(scaledRadius(radius))
     Box(
         modifier
             .clip(shape)
@@ -210,7 +314,7 @@ fun SubPanel(
 }
 
 /** Faint dot grid, like the hologram bays in the reference UI. */
-fun Modifier.dotGrid(color: Color = Color(0x26B0C8E4), spacing: Dp = 13.dp, radius: Dp = 0.8.dp): Modifier =
+fun Modifier.dotGrid(spacing: Dp = 13.dp, radius: Dp = 0.8.dp): Modifier =
     drawWithCache {
         val sp = spacing.toPx()
         val r = radius.toPx()
@@ -224,7 +328,7 @@ fun Modifier.dotGrid(color: Color = Color(0x26B0C8E4), spacing: Dp = 13.dp, radi
             }
             y += sp
         }
-        onDrawBehind { drawPath(path, color) }
+        onDrawBehind { drawPath(path, HoloColors.Border.copy(alpha = 0.15f)) }
     }
 
 /** Arc with a soft glow, drawn inside the current bounds. Angles in degrees, 0 = 3 o'clock. */
@@ -264,9 +368,7 @@ fun RingGauge(
             val sw = stroke.toPx()
             val inset = sw / 2f + 1.dp.toPx()
             val d = size.minDimension - inset * 2f
-            drawCircle(
-                HoloColors.Track, radius = d / 2f, center = center, style = Stroke(sw),
-            )
+            drawCircle(HoloColors.Track, radius = d / 2f, center = center, style = Stroke(sw))
             if (fraction > 0.005f) {
                 glowArc(color, -90f, 360f * fraction.coerceIn(0f, 1f), sw, inset, 3.dp.toPx())
             }
@@ -321,8 +423,8 @@ fun CountBadge(count: Int, modifier: Modifier = Modifier) {
 
 /** Compact text button, e.g. GRANT / SET. */
 @Composable
-fun PillButton(text: String, color: Color = LocalHolo.current.holo, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(8.dp)
+fun PillButton(text: String, color: Color = HoloColors.Holo, onClick: () -> Unit) {
+    val shape = holoShape(scaledRadius(8.dp))
     Box(
         Modifier
             .height(28.dp)

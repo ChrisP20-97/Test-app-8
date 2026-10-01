@@ -2,6 +2,25 @@ package dev.holo.launcher.ui.home
 
 import android.content.Intent
 import android.text.format.DateFormat
+import android.provider.AlarmClock
+import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
+import dev.holo.launcher.data.ClockMode
+import dev.holo.launcher.data.TopLabel
+import dev.holo.launcher.ui.components.holoShape
+import kotlin.math.abs
+import kotlin.math.floor
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -89,61 +108,153 @@ private val dateFmt = DateTimeFormatter.ofPattern("EEE · dd MMM yyyy", Locale.U
 
 // ---------------------------------------------------------------- top bar
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TopBar(m: LauncherModel, modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val s = m.settings
     val now by rememberNow(m.active)
     val dt = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault())
-    val hour = if (DateFormat.is24HourFormat(context)) dt.hour else (dt.hour + 11) % 12 + 1
-    HoloCard(modifier.bootIn(0, m.bootTick, !m.settings.lowPower), padding = 0.dp) {
+    val is24 = when (s.clockMode) {
+        ClockMode.SYSTEM -> DateFormat.is24HourFormat(context)
+        ClockMode.H24 -> true
+        ClockMode.H12 -> false
+    }
+    val hour = if (is24) dt.hour else (dt.hour + 11) % 12 + 1
+    val date = dateFmt.format(dt).uppercase()
+    val sub = when (s.topLabel) {
+        TopLabel.DATE -> date
+        TopLabel.CALLSIGN -> s.operatorName.uppercase()
+        TopLabel.BOTH -> s.operatorName.uppercase() + " · " + date
+    }
+    HoloCard(modifier.bootIn(0, m.bootTick, !s.lowPower), padding = 0.dp, depth = 0.9f) {
         Row(
-            Modifier.fillMaxSize().padding(start = 4.dp, end = 14.dp),
+            Modifier
+                .fillMaxSize()
+                .combinedClickable(
+                    onClickLabel = "Open alarms",
+                    onLongClickLabel = "Launcher settings",
+                    onLongClick = { m.openSettings() },
+                    onClick = { openIntent(context, Intent(AlarmClock.ACTION_SHOW_ALARMS)) },
+                )
+                .padding(start = 14.dp, end = if (s.topBarGear) 2.dp else 12.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Box(
-                Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .clickable(onClickLabel = "Launcher settings") { m.openSettings() },
-                contentAlignment = Alignment.Center,
-            ) { Emblem(Modifier.size(36.dp)) }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text("%02d:%02d".format(hour, dt.minute), style = HoloType.clock, modifier = Modifier.alignByBaseline())
+                    if (s.showSeconds) {
+                        Spacer(Modifier.width(3.dp))
+                        Text(
+                            "%02d".format(dt.second),
+                            style = HoloType.value.copy(fontSize = 12.sp, color = HoloColors.Holo),
+                            modifier = Modifier.alignByBaseline(),
+                        )
+                    }
+                    if (!is24) {
+                        Spacer(Modifier.width(3.dp))
+                        Text(
+                            if (dt.hour < 12) "AM" else "PM",
+                            style = HoloType.label.copy(color = HoloColors.TextMid),
+                            modifier = Modifier.alignByBaseline(),
+                        )
+                    }
+                }
                 Text(
-                    m.settings.operatorName.uppercase(),
-                    style = HoloType.title.copy(fontSize = 14.sp, letterSpacing = 0.2.em, color = HoloColors.TextBright),
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    sub, style = HoloType.label, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 160.dp),
                 )
-                Text(dateFmt.format(dt).uppercase(), style = HoloType.label, maxLines = 1)
             }
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text("%02d:%02d".format(hour, dt.minute), style = HoloType.clock, modifier = Modifier.alignByBaseline())
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    "%02d".format(dt.second),
-                    style = HoloType.value.copy(fontSize = 12.sp, color = LocalHolo.current.holo),
-                    modifier = Modifier.alignByBaseline(),
-                )
+            Box(Modifier.width(1.dp).fillMaxHeight(0.6f).background(HoloColors.Divider))
+            CompassTape(m.env.headingDeg, s.compassSpan, Modifier.weight(1f).fillMaxHeight())
+            if (s.topBarGear) {
+                CircleButton(HoloIcons.Settings, "Launcher settings", size = 26.dp, iconSize = 14.dp) { m.openSettings() }
             }
         }
     }
 }
 
+private val cardinals = mapOf(0 to "N", 45 to "NE", 90 to "E", 135 to "SE", 180 to "S", 225 to "SW", 270 to "W", 315 to "NW")
+
+/** Scrolling heading tape: ticks every 5°, numbers every 15°, cardinal points, centre caret and readout. */
 @Composable
-fun Emblem(modifier: Modifier) {
-    Canvas(modifier) {
-        val u = size.minDimension / 36f
-        val c = Color(0xFFC9DCEF)
-        val ring = Size(32f * u, 32f * u)
-        for (i in 0 until 4) {
-            drawArc(c, -80f + i * 90f, 72f, false, Offset(2f * u, 2f * u), ring, style = Stroke(1.2f * u))
+fun CompassTape(heading: Float?, span: Float, modifier: Modifier) {
+    val measurer = rememberTextMeasurer(cacheSize = 64)
+    val minorStyle = HoloType.label.copy(color = HoloColors.TextMid, fontSize = 9.sp, letterSpacing = 0.04.em)
+    val majorStyle = HoloType.value.copy(color = HoloColors.Text, fontSize = 11.sp)
+    val holo = HoloColors.Holo
+    val tick = HoloColors.TextMid
+    val anim = remember { Animatable(heading ?: 0f) }
+    LaunchedEffect(heading) {
+        val target = heading ?: return@LaunchedEffect
+        val cur = anim.value
+        var d = (target - cur) % 360f
+        if (d > 180f) d -= 360f
+        if (d < -180f) d += 360f
+        anim.animateTo(cur + d, tween(240, easing = LinearEasing))
+    }
+    Box(modifier) {
+        Canvas(Modifier.fillMaxSize().graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }) {
+            val h = anim.value
+            val w = size.width
+            val cx = w / 2f
+            val visible = span.coerceIn(30f, 360f)
+            val ppd = w / visible
+            val base = size.height - 13.dp.toPx()
+            val keepClear = 30.dp.toPx()
+            val half = visible / 2f + 10f
+            var a = floor((h - half) / 5f) * 5f
+            val end = h + half
+            while (a <= end) {
+                val x = cx + (a - h) * ppd
+                val norm = ((a.roundToInt() % 360) + 360) % 360
+                val major = norm % 45 == 0
+                val mid = norm % 15 == 0
+                val len = (if (major) 11.dp else if (mid) 7.dp else 4.dp).toPx()
+                drawLine(
+                    tick.copy(alpha = if (major) 0.95f else 0.55f),
+                    Offset(x, base - len), Offset(x, base),
+                    strokeWidth = (if (major) 1.4f else 1f).dp.toPx(),
+                )
+                if ((major || mid) && abs(x - cx) > keepClear) {
+                    val layout = measurer.measure(cardinals[norm] ?: "%03d".format(norm), if (major) majorStyle else minorStyle)
+                    drawText(
+                        layout,
+                        topLeft = Offset(x - layout.size.width / 2f, base - len - 2.dp.toPx() - layout.size.height),
+                    )
+                }
+                a += 5f
+            }
+            drawLine(tick.copy(alpha = 0.35f), Offset(0f, base), Offset(w, base), strokeWidth = 1.dp.toPx())
+            val caret = Path().apply {
+                moveTo(cx, base + 2.dp.toPx())
+                lineTo(cx - 5.dp.toPx(), base + 9.dp.toPx())
+                lineTo(cx + 5.dp.toPx(), base + 9.dp.toPx())
+                close()
+            }
+            drawPath(caret, holo)
+            drawLine(holo, Offset(cx, base - 15.dp.toPx()), Offset(cx, base), strokeWidth = 1.5.dp.toPx())
+            drawRect(
+                Brush.horizontalGradient(
+                    0f to Color.Transparent, 0.18f to Color.Black, 0.82f to Color.Black, 1f to Color.Transparent,
+                ),
+                blendMode = BlendMode.DstIn,
+            )
         }
-        drawCircle(c.copy(alpha = 0.42f), radius = 11.5f * u, style = Stroke(1f * u))
-        val chevron = Path().apply {
-            moveTo(11.5f * u, 23.5f * u); lineTo(18f * u, 11f * u); lineTo(24.5f * u, 23.5f * u); lineTo(18f * u, 19.8f * u); close()
+        val shown = heading?.let { "%03d° %s".format(((it.roundToInt() % 360) + 360) % 360, compassPoint(it)) } ?: "NO HDG"
+        val chip = holoShape(4.dp)
+        Box(
+            Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 4.dp)
+                .clip(chip)
+                .background(HoloColors.HeaderFill.copy(alpha = 0.9f))
+                .border(1.dp, holo.copy(alpha = 0.7f), chip)
+                .padding(horizontal = 6.dp, vertical = 1.dp),
+        ) {
+            Text(shown, style = HoloType.value.copy(fontSize = 10.5.sp, color = HoloColors.TextBright))
         }
-        drawPath(chevron, c.copy(alpha = 0.2f))
-        drawPath(chevron, Color(0xFFE2EEF9), style = Stroke(1.2f * u, join = StrokeJoin.Round))
     }
 }
 
@@ -153,7 +264,7 @@ fun Emblem(modifier: Modifier) {
 fun DeviceCard(m: LauncherModel, showTiles: Boolean, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val s = m.stats
-    HoloCard(modifier.bootIn(1, m.bootTick, !m.settings.lowPower)) {
+    HoloCard(modifier.bootIn(1, m.bootTick, !m.settings.lowPower), depth = 0.35f) {
         HeaderPill("DEVICE", HoloIcons.Phone) {
             StatusTag(
                 if (s.charging) "CHARGING" else "ONLINE",
@@ -192,8 +303,8 @@ private fun StatusTag(text: String, color: Color) {
 @Composable
 private fun HologramBay(m: LauncherModel, modifier: Modifier) {
     val s = m.stats
-    SubPanel(modifier.dotGrid(), fill = Color(0x47304050)) {
-        DeviceHologram(Modifier.fillMaxSize(), s.batteryPct / 100f, s.charging, m.tilt)
+    SubPanel(modifier.dotGrid(), fill = HoloColors.HeaderFill.copy(alpha = 0.35f)) {
+        if (m.settings.showHologram) DeviceHologram(Modifier.fillMaxSize(), s.batteryPct / 100f, s.charging, m.tilt)
         Column(Modifier.align(Alignment.TopStart).padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             TickLabel("CORE INTEGRITY")
             val (text, color) = thermalState(s.thermalStatus)
@@ -348,7 +459,7 @@ private fun WaveBracket() {
 @Composable
 fun VitalsCard(m: LauncherModel, modifier: Modifier = Modifier) {
     val s = m.stats
-    HoloCard(modifier.bootIn(3, m.bootTick, !m.settings.lowPower)) {
+    HoloCard(modifier.bootIn(3, m.bootTick, !m.settings.lowPower), depth = 0.55f) {
         HeaderPill("VITALS", HoloIcons.Chip)
         val tile = Modifier.fillMaxWidth()
         Column(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -406,7 +517,7 @@ fun EnvironmentCard(m: LauncherModel, wide: Boolean, modifier: Modifier = Modifi
         }
     }.take(if (wide) 6 else 5)
 
-    HoloCard(modifier.bootIn(2, m.bootTick, !m.settings.lowPower)) {
+    HoloCard(modifier.bootIn(2, m.bootTick, !m.settings.lowPower), depth = 0.6f) {
         HeaderPill("ENVIRONMENT", HoloIcons.Globe) {
             CircleButton(HoloIcons.ArrowOut, "Open weather") {
                 openIntent(context, Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.google.com/search?q=weather")))

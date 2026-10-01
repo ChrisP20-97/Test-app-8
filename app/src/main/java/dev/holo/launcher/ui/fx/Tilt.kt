@@ -16,16 +16,22 @@ import kotlin.math.exp
 /**
  * Device-motion tilt for the 3D UI, in degrees: x drives rotationY, y drives rotationX.
  *
- * Uses the gyroscope as a leaky integrator: when the phone turns, the UI leans against the motion,
- * then eases back to flat within about a second. No gimbal problems when the phone is upright,
- * and nothing to calibrate.
+ * The gyroscope feeds a leaky integrator: when the phone turns, the UI leans against the motion
+ * (up to [maxDeg]), then eases back to flat over roughly [returnSeconds]. [sensitivity] scales how
+ * far a given motion pushes it. No calibration, and no gimbal problems when the phone is upright.
  */
 @Composable
-fun rememberTilt(enabled: Boolean, maxDeg: Float, invert: Boolean): State<Offset> {
+fun rememberTilt(
+    enabled: Boolean,
+    maxDeg: Float,
+    sensitivity: Float,
+    returnSeconds: Float,
+    invert: Boolean,
+): State<Offset> {
     val context = LocalContext.current
     val state = remember { mutableStateOf(Offset.Zero) }
-    DisposableEffect(enabled, maxDeg, invert) {
-        if (!enabled) {
+    DisposableEffect(enabled, maxDeg, sensitivity, returnSeconds, invert) {
+        if (!enabled || maxDeg <= 0.01f) {
             state.value = Offset.Zero
             return@DisposableEffect onDispose { }
         }
@@ -37,7 +43,8 @@ fun rememberTilt(enabled: Boolean, maxDeg: Float, invert: Boolean): State<Offset
         var sy = 0f
         var lastTs = 0L
         val sign = if (invert) -1f else 1f
-        val gain = 57.2958f * 0.6f
+        val gain = 57.2958f * sensitivity
+        val tau = returnSeconds.coerceAtLeast(0.1f)
 
         val listener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent?) {
@@ -48,7 +55,7 @@ fun rememberTilt(enabled: Boolean, maxDeg: Float, invert: Boolean): State<Offset
                 }
                 val dt = ((e.timestamp - lastTs) * 1e-9f).coerceIn(0f, 0.1f)
                 lastTs = e.timestamp
-                val decay = exp(-dt / 0.85f)
+                val decay = exp(-dt / tau)
                 ax = ax * decay + e.values[0] * dt
                 ay = ay * decay + e.values[1] * dt
                 val tx = (ay * gain * sign).coerceIn(-maxDeg, maxDeg)

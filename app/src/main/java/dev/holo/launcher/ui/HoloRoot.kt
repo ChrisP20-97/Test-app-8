@@ -70,6 +70,15 @@ import dev.holo.launcher.ui.theme.HoloColorScheme
 import dev.holo.launcher.ui.theme.HoloColors
 import dev.holo.launcher.ui.theme.HoloStyle
 import dev.holo.launcher.ui.theme.LocalHolo
+import dev.holo.launcher.ui.theme.LocalTilt
+import dev.holo.launcher.ui.theme.HoloMetrics
+import dev.holo.launcher.ui.theme.HoloTheme
+import dev.holo.launcher.ui.fx.RenderPipeline
+import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.IntSize
 import dev.holo.launcher.ui.util.rememberLifecycleTick
 import kotlinx.coroutines.flow.SharedFlow
 
@@ -77,6 +86,7 @@ import kotlinx.coroutines.flow.SharedFlow
 fun HoloRoot(container: AppContainer, homePresses: SharedFlow<Unit>) {
     val context = LocalContext.current
     val settings by container.settings.state.collectAsStateWithLifecycle()
+    LaunchedEffect(settings) { HoloTheme.apply(settings) }
     val lifecycleOwner = LocalLifecycleOwner.current
     val lifecycleState by lifecycleOwner.lifecycle.currentStateFlow.collectAsState()
     val active = lifecycleState.isAtLeast(Lifecycle.State.STARTED)
@@ -130,7 +140,9 @@ fun HoloRoot(container: AppContainer, homePresses: SharedFlow<Unit>) {
 
     val tilt = rememberTilt(
         enabled = settings.tilt && !settings.lowPower && active,
-        maxDeg = 1.2f + 3.8f * settings.tiltStrength,
+        maxDeg = settings.maxTilt,
+        sensitivity = settings.tiltSensitivity,
+        returnSeconds = settings.tiltReturn,
         invert = settings.invertTilt,
     )
 
@@ -169,43 +181,75 @@ fun HoloRoot(container: AppContainer, homePresses: SharedFlow<Unit>) {
     val style = HoloStyle(
         glass = settings.glass,
         holo = Color(settings.holoTint),
-        fx = settings.fx,
         lowPower = settings.lowPower,
         monoIcons = settings.monoIcons,
+        holoSpin = settings.holoSpin,
+        holoBeam = settings.holoBeam,
+        holoBloom = settings.holoBloom,
+        navLabels = settings.navLabels,
     )
 
+    // GPU post-processing over backdrop + panels (bloom, lens aberration, film grade, vignette).
+    val pipeline = remember { RenderPipeline() }
+    var stageSize by remember { mutableStateOf(IntSize.Zero) }
+    val screenDensity = LocalDensity.current
+    val postEffect = remember(settings, stageSize) {
+        pipeline.build(stageSize.width.toFloat(), stageSize.height.toFloat(), screenDensity.density, settings)
+            ?.asComposeRenderEffect()
+    }
+    val pipelineOn = postEffect != null
+
     MaterialTheme(colorScheme = HoloColorScheme) {
-        CompositionLocalProvider(LocalHolo provides style) {
+        CompositionLocalProvider(
+            LocalHolo provides style,
+            LocalTilt provides tilt,
+            LocalDensity provides Density(screenDensity.density, screenDensity.fontScale * settings.textScale),
+        ) {
             Box(Modifier.fillMaxSize().background(HoloColors.Bg)) {
-                Backdrop(
-                    useCamera = settings.cameraBackdrop && perms.camera && !settings.lowPower && active,
-                    blur = settings.backdropBlur,
-                    grade = settings.gradeStrength,
-                    tint = style.holo,
-                    tilt = tilt,
-                )
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .graphicsLayer {
-                            val t = tilt.value
-                            rotationY = t.x
-                            rotationX = -t.y
-                            cameraDistance = 48f * density
-                        }
+                        .onSizeChanged { stageSize = it }
+                        .graphicsLayer { renderEffect = postEffect }
                 ) {
-                    LauncherScaffold(
-                        m = model,
-                        tab = tab,
-                        onTab = { t ->
-                            tab = t
-                            query = ""
-                        },
-                        query = query,
-                        onQuery = { query = it },
+                    Backdrop(
+                        useCamera = settings.cameraBackdrop && perms.camera && !settings.lowPower && active,
+                        blur = settings.backdropBlur,
+                        grade = settings.gradeStrength,
+                        tint = style.holo,
+                        tilt = tilt,
+                        dim = settings.backdropDim,
+                        parallax = settings.backdropParallax,
                     )
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                val t = tilt.value
+                                rotationY = t.x
+                                rotationX = -t.y
+                                cameraDistance = 48f * density
+                            }
+                    ) {
+                        LauncherScaffold(
+                            m = model,
+                            tab = tab,
+                            onTab = { t ->
+                                tab = t
+                                query = ""
+                            },
+                            query = query,
+                            onQuery = { query = it },
+                        )
+                    }
                 }
-                if (settings.fx > 0.01f) PostFxOverlay(settings.fx, animate = !settings.lowPower && active)
+                val overlayAnimate = !settings.lowPower && active
+                PostFxOverlay(
+                    grainAmount = if (settings.lowPower) 0f else settings.grain,
+                    vignette = if (pipelineOn) 0f else settings.vignette,
+                    sweepOn = settings.lightSweep,
+                    animate = overlayAnimate,
+                )
                 if (showSettings) {
                     SettingsScreen(container.settings, settings, model) { showSettings = false }
                 }
@@ -230,31 +274,32 @@ private fun LauncherScaffold(
         Modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.safeDrawing)
-            .padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 6.dp)
+            .padding(start = HoloMetrics.margin.dp, end = HoloMetrics.margin.dp, top = 4.dp, bottom = 6.dp)
     ) {
+        val gap = HoloMetrics.gap.dp
         val wide = maxWidth >= 600.dp
         val searching = query.isNotBlank()
         if (wide) {
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
                 Box(Modifier.fillMaxWidth().weight(1f)) {
                     when {
-                        searching -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                TopBar(m, Modifier.fillMaxWidth().height(52.dp))
+                        searching -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(gap)) {
+                                TopBar(m, Modifier.fillMaxWidth().height(56.dp))
                                 SearchResults(query, m, { onQuery("") }, Modifier.fillMaxWidth().weight(1f))
                             }
                             DeviceCard(m, showTiles = false, modifier = Modifier.weight(1.1f).fillMaxHeight())
                         }
                         tab == Tab.HOME -> WideDashboard(m)
-                        else -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            TopBar(m, Modifier.fillMaxWidth().height(52.dp))
+                        else -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
+                            TopBar(m, Modifier.fillMaxWidth().height(56.dp))
                             Page(tab, m, Modifier.fillMaxWidth().weight(1f))
                         }
                     }
                 }
                 Row(
                     Modifier.fillMaxWidth().height(64.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(gap),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     SearchBar(query, onQuery, m, Modifier.weight(0.42f))
@@ -262,8 +307,8 @@ private fun LauncherScaffold(
                 }
             }
         } else {
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                TopBar(m, Modifier.fillMaxWidth().height(52.dp))
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
+                TopBar(m, Modifier.fillMaxWidth().height(56.dp))
                 Box(Modifier.fillMaxWidth().weight(1f)) {
                     if (searching) {
                         SearchResults(query, m, { onQuery("") }, Modifier.fillMaxSize())
@@ -282,12 +327,16 @@ private fun LauncherScaffold(
 
 @Composable
 private fun NarrowDashboard(m: LauncherModel) {
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        DeviceCard(m, showTiles = true, modifier = Modifier.fillMaxWidth().weight(1.35f))
-        EnvironmentCard(m, wide = false, modifier = Modifier.fillMaxWidth().height(112.dp))
+    val s = m.settings
+    val gap = HoloMetrics.gap.dp
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
+        DeviceCard(m, showTiles = s.showTiles, modifier = Modifier.fillMaxWidth().weight(1.35f))
+        if (s.showEnvironment) {
+            EnvironmentCard(m, wide = false, modifier = Modifier.fillMaxWidth().height(112.dp))
+        }
         if (m.showSetup) {
             SetupCard(m, Modifier.fillMaxWidth().weight(1f))
-        } else {
+        } else if (s.showNotifications) {
             NotificationsCard(m, Modifier.fillMaxWidth().weight(1f))
         }
     }
@@ -296,18 +345,24 @@ private fun NarrowDashboard(m: LauncherModel) {
 /** Fold inner screen: notifications | hologram | vitals, like the in-game layout. */
 @Composable
 private fun WideDashboard(m: LauncherModel) {
-    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            TopBar(m, Modifier.fillMaxWidth().height(52.dp))
+    val s = m.settings
+    val gap = HoloMetrics.gap.dp
+    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+        Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(gap)) {
+            TopBar(m, Modifier.fillMaxWidth().height(56.dp))
             if (m.showSetup) {
                 SetupCard(m, Modifier.fillMaxWidth().weight(1f))
-            } else {
+            } else if (s.showNotifications) {
                 NotificationsCard(m, Modifier.fillMaxWidth().weight(1f))
+            } else {
+                Box(Modifier.fillMaxWidth().weight(1f))
             }
-            EnvironmentCard(m, wide = true, modifier = Modifier.fillMaxWidth().height(112.dp))
+            if (s.showEnvironment) {
+                EnvironmentCard(m, wide = true, modifier = Modifier.fillMaxWidth().height(112.dp))
+            }
         }
         DeviceCard(m, showTiles = false, modifier = Modifier.weight(1.2f).fillMaxHeight())
-        VitalsCard(m, Modifier.weight(0.55f).fillMaxHeight())
+        if (s.showTiles) VitalsCard(m, Modifier.weight(0.55f).fillMaxHeight())
     }
 }
 
