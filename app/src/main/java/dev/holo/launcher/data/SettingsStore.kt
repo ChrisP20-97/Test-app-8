@@ -17,6 +17,13 @@ enum class ClockMode { SYSTEM, H24, H12 }
 enum class TopLabel { DATE, CALLSIGN, BOTH }
 
 @Serializable
+/** How far each key floats above the keyboard deck. */
+enum class KeyDepthProfile(val label: String) {
+    FLAT("FLAT"), RAKE("RAKE"), DOME("DOME"), ISLANDS("ISLANDS"), SCATTER("SCATTER"),
+}
+
+enum class KeyHaptics { OFF, LIGHT, FIRM }
+
 enum class FontChoice(val label: String) {
     RAJDHANI("Rajdhani"),
     TITILLIUM("Titillium"),
@@ -104,6 +111,25 @@ data class HoloSettings(
     val lowPower: Boolean = false,
     val operatorName: String = "OPERATOR-01",
     val setupDismissed: Boolean = false,
+    // keyboard
+    val kbTilt: Boolean = true,
+    val kbMaxTilt: Float = 8f,
+    val kbDepthProfile: KeyDepthProfile = KeyDepthProfile.RAKE,
+    val kbDepth: Float = 1f,
+    val kbThickness: Float = 0.6f,
+    val kbKeyHeight: Float = 46f,
+    val kbKeyGap: Float = 5f,
+    val kbDeck: Float = 0.9f,
+    val kbLabelScale: Float = 1f,
+    val kbBottomPad: Float = 4f,
+    val kbNumberRow: Boolean = false,
+    val kbPopup: Boolean = true,
+    val kbPressFx: Boolean = true,
+    val kbBootAnim: Boolean = true,
+    val kbHaptics: KeyHaptics = KeyHaptics.LIGHT,
+    val kbSound: Boolean = false,
+    val kbAutoCaps: Boolean = true,
+    val kbDoubleSpacePeriod: Boolean = true,
 )
 
 /** Colour + font looks that can be applied in one tap. Layout and motion settings are kept. */

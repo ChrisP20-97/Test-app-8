@@ -81,9 +81,10 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import dev.holo.launcher.ui.util.rememberLifecycleTick
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 
 @Composable
-fun HoloRoot(container: AppContainer, homePresses: SharedFlow<Unit>) {
+fun HoloRoot(container: AppContainer, homePresses: SharedFlow<Unit>, keyboardSettings: StateFlow<Int>) {
     val context = LocalContext.current
     val settings by container.settings.state.collectAsStateWithLifecycle()
     LaunchedEffect(settings) { HoloTheme.apply(settings) }
@@ -96,6 +97,17 @@ fun HoloRoot(container: AppContainer, homePresses: SharedFlow<Unit>) {
     var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
     var query by rememberSaveable { mutableStateOf("") }
     var showSettings by rememberSaveable { mutableStateOf(false) }
+    var settingsStart by remember { mutableStateOf<String?>(null) }
+    var seenKbRequest by rememberSaveable { mutableStateOf(0) }
+    LaunchedEffect(keyboardSettings) {
+        keyboardSettings.collect { n ->
+            if (n > seenKbRequest) {
+                seenKbRequest = n
+                settingsStart = "KEYBOARD"
+                showSettings = true
+            }
+        }
+    }
 
     LaunchedEffect(homePresses) {
         homePresses.collect {
@@ -251,7 +263,10 @@ fun HoloRoot(container: AppContainer, homePresses: SharedFlow<Unit>) {
                     animate = overlayAnimate,
                 )
                 if (showSettings) {
-                    SettingsScreen(container.settings, settings, model) { showSettings = false }
+                    SettingsScreen(container.settings, settings, model, settingsStart) {
+                        showSettings = false
+                        settingsStart = null
+                    }
                 }
             }
         }

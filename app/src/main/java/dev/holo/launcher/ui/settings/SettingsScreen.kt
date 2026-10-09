@@ -34,6 +34,12 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
+import android.content.Intent
+import android.view.inputmethod.InputMethodManager
+import dev.holo.launcher.data.KeyDepthProfile
+import dev.holo.launcher.data.KeyHaptics
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -74,7 +80,7 @@ import kotlin.math.roundToInt
 
 private enum class Section(val label: String) {
     THEME("THEME"), PANELS("PANELS"), TYPE("TYPE"), LAYOUT("LAYOUT"), CLOCK("CLOCK"),
-    MOTION("MOTION"), RENDER("RENDER"), HOLOGRAM("HOLOGRAM"), BACKDROP("BACKDROP"), SYSTEM("SYSTEM"),
+    MOTION("MOTION"), RENDER("RENDER"), HOLOGRAM("HOLOGRAM"), BACKDROP("BACKDROP"), KEYBOARD("KEYBOARD"), SYSTEM("SYSTEM"),
 }
 
 private val brightSwatches = listOf(
@@ -91,8 +97,17 @@ private val darkSwatches = listOf(
  * so every change previews live on the dashboard behind it.
  */
 @Composable
-fun SettingsScreen(store: SettingsStore, s: HoloSettings, m: LauncherModel, onClose: () -> Unit) {
+fun SettingsScreen(
+    store: SettingsStore,
+    s: HoloSettings,
+    m: LauncherModel,
+    startSection: String? = null,
+    onClose: () -> Unit,
+) {
     var section by rememberSaveable { mutableStateOf(Section.THEME) }
+    LaunchedEffect(startSection) {
+        Section.entries.firstOrNull { it.name == startSection }?.let { section = it }
+    }
     val set: ((HoloSettings) -> HoloSettings) -> Unit = { store.update(it) }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 600.dp
@@ -138,6 +153,7 @@ fun SettingsScreen(store: SettingsStore, s: HoloSettings, m: LauncherModel, onCl
                         Section.RENDER -> RenderSection(s, set)
                         Section.HOLOGRAM -> HologramSection(s, set)
                         Section.BACKDROP -> BackdropSection(s, set, m)
+                        Section.KEYBOARD -> KeyboardSection(s, set, m)
                         Section.SYSTEM -> SystemSection(s, set, m, store)
                     }
                     Spacer(Modifier.height(8.dp))
@@ -249,6 +265,76 @@ private fun BackdropSection(s: HoloSettings, set: Setter, m: LauncherModel) {
     SliderRow("Blur", s.backdropBlur, 0f..1f, pct) { v -> set { it.copy(backdropBlur = v) } }
     SliderRow("Colour grade", s.gradeStrength, 0f..1f, pct) { v -> set { it.copy(gradeStrength = v) } }
     SliderRow("Dim", s.backdropDim, 0f..1f, pct) { v -> set { it.copy(backdropDim = v) } }
+}
+
+@Composable
+private fun KeyboardSection(s: HoloSettings, set: Setter, m: LauncherModel) {
+    val context = LocalContext.current
+    val (enabled, current) = remember(m.perms) {
+        val imm = context.getSystemService(InputMethodManager::class.java)
+        val on = imm?.enabledInputMethodList?.any { it.packageName == context.packageName } == true
+        val def = android.provider.Settings.Secure.getString(
+            context.contentResolver, android.provider.Settings.Secure.DEFAULT_INPUT_METHOD,
+        ).orEmpty()
+        on to def.startsWith(context.packageName + "/")
+    }
+    Label("SETUP")
+    ActionRow("1 · Enable Holo keyboard", if (enabled) "ENABLED" else "ENABLE", enabled) {
+        runCatching {
+            context.startActivity(
+                Intent(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }
+    }
+    ActionRow("2 · Switch to it", if (current) "ACTIVE" else "SWITCH", current) {
+        context.getSystemService(InputMethodManager::class.java)?.showInputMethodPicker()
+    }
+    TestFieldRow()
+    Label("MOTION & DEPTH")
+    ToggleRow("3D keys", "Keys tilt and shift in depth as the phone moves", s.kbTilt) { v -> set { it.copy(kbTilt = v) } }
+    SliderRow("Max tilt", s.kbMaxTilt, 0f..30f, deg) { v -> set { it.copy(kbMaxTilt = v) } }
+    ChoiceRow("Depth profile", KeyDepthProfile.entries, s.kbDepthProfile, { it.label }) { v -> set { it.copy(kbDepthProfile = v) } }
+    SliderRow("Depth separation", s.kbDepth, 0f..2.5f, pct) { v -> set { it.copy(kbDepth = v) } }
+    SliderRow("Key thickness", s.kbThickness, 0f..1.5f, pct) { v -> set { it.copy(kbThickness = v) } }
+    Label("LOOK")
+    SliderRow("Key height", s.kbKeyHeight, 36f..64f, dp0) { v -> set { it.copy(kbKeyHeight = v) } }
+    SliderRow("Key gap", s.kbKeyGap, 2f..12f, dp1) { v -> set { it.copy(kbKeyGap = v) } }
+    SliderRow("Deck opacity", s.kbDeck, 0f..1f, pct) { v -> set { it.copy(kbDeck = v) } }
+    SliderRow("Label size", s.kbLabelScale, 0.8f..1.3f, times) { v -> set { it.copy(kbLabelScale = v) } }
+    SliderRow("Bottom padding", s.kbBottomPad, 0f..48f, dp0) { v -> set { it.copy(kbBottomPad = v) } }
+    Label("FEEL")
+    ToggleRow("Key preview", "Hologram plate above the key you press", s.kbPopup) { v -> set { it.copy(kbPopup = v) } }
+    ToggleRow("Press glow", "Glow and a ring as each key springs back", s.kbPressFx) { v -> set { it.copy(kbPressFx = v) } }
+    ToggleRow("Boot animation", "Keys rise out of the deck when the keyboard opens", s.kbBootAnim) { v -> set { it.copy(kbBootAnim = v) } }
+    ChoiceRow("Vibration", KeyHaptics.entries, s.kbHaptics, { it.name }) { v -> set { it.copy(kbHaptics = v) } }
+    ToggleRow("Key sounds", null, s.kbSound) { v -> set { it.copy(kbSound = v) } }
+    ToggleRow("Number row", null, s.kbNumberRow) { v -> set { it.copy(kbNumberRow = v) } }
+    ToggleRow("Auto capitals", null, s.kbAutoCaps) { v -> set { it.copy(kbAutoCaps = v) } }
+    ToggleRow("Double-space full stop", null, s.kbDoubleSpacePeriod) { v -> set { it.copy(kbDoubleSpacePeriod = v) } }
+}
+
+@Composable
+private fun TestFieldRow() {
+    var text by remember { mutableStateOf("") }
+    SubPanel(Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+        Row(
+            Modifier.fillMaxWidth().align(Alignment.Center).padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Test", style = HoloType.body.copy(fontSize = 14.sp, color = HoloColors.TextBright))
+            Box(Modifier.weight(1f)) {
+                if (text.isEmpty()) Text("Tap to try the keyboard", style = HoloType.body.copy(fontSize = 14.sp, color = HoloColors.TextDim))
+                BasicTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    textStyle = HoloType.body.copy(fontSize = 14.sp, color = HoloColors.TextBright),
+                    cursorBrush = SolidColor(HoloColors.Holo),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
 }
 
 @Composable

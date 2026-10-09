@@ -10,11 +10,15 @@ import androidx.activity.enableEdgeToEdge
 import dev.holo.launcher.ui.HoloRoot
 import dev.holo.launcher.ui.theme.HoloTheme
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 
 class MainActivity : ComponentActivity() {
 
     /** Fires when the user presses Home while the launcher is already showing. */
     private val homePresses = MutableSharedFlow<Unit>(extraBufferCapacity = 4)
+
+    /** Counts requests (from the keyboard's gear) to open keyboard settings. */
+    private val keyboardSettings = MutableStateFlow(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge(
@@ -25,7 +29,8 @@ class MainActivity : ComponentActivity() {
         window.isNavigationBarContrastEnforced = false
         val container = (application as HoloApplication).container
         HoloTheme.apply(container.settings.state.value)
-        setContent { HoloRoot(container = container, homePresses = homePresses) }
+        if (intent?.action == ACTION_KEYBOARD_SETTINGS) keyboardSettings.value++
+        setContent { HoloRoot(container = container, homePresses = homePresses, keyboardSettings = keyboardSettings) }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -33,5 +38,10 @@ class MainActivity : ComponentActivity() {
         if (intent.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_HOME)) {
             homePresses.tryEmit(Unit)
         }
+        if (intent.action == ACTION_KEYBOARD_SETTINGS) keyboardSettings.value++
+    }
+
+    companion object {
+        const val ACTION_KEYBOARD_SETTINGS = "dev.holo.launcher.KEYBOARD_SETTINGS"
     }
 }

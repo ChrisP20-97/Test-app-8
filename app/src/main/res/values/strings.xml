@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Holo Launcher</string>
+    <string name="keyboard_name">Holo HUD Keyboard</string>
+    <string name="keyboard_subtype">English (US)</string>
 </resources>
