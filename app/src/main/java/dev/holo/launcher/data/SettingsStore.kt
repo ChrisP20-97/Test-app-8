@@ -219,7 +219,7 @@ enum class KbPreset(val label: String) {
             kbGrid = false, kbHatch = false, kbBootStyle = KbBoot.RISE, kbBackdrop = 0f,
         )
         ARENA -> s.copy(
-            kbSurface = KbSurface.BOWL, kbCurve = 1.3f, kbKeyAngle = 1.5f, kbLens = 1.6f, kbDepthProfile = KeyDepthProfile.ISLANDS,
+            kbSurface = KbSurface.BOWL, kbCurve = 1.1f, kbKeyAngle = 1.35f, kbLens = 1.45f, kbDepthProfile = KeyDepthProfile.ISLANDS,
             kbDepth = 0.8f, kbThickness = 0.9f, kbKeyStyle = KeyStyle.BRACKET, kbKeyRadius = 4f, kbKeyOpacity = 0.6f,
             kbBorderWidth = 1.6f, kbBorderGlow = 0.6f, kbLabelGlow = 0.5f, kbAltBadges = true, kbSpecular = 0.7f,
             kbShade = 0.6f, kbShadow = 0.6f, kbDepthFade = 0.6f, kbDeckStyle = KbDeckStyle.FRAME, kbDeck = 0.7f,
