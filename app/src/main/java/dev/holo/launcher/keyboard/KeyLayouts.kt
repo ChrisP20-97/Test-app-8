@@ -64,13 +64,13 @@ object KeyLayouts {
         KbMode.ALPHA -> buildList {
             if (numberRowOn) add(numberRow)
             add(KeyRow(chars("qwertyuiop", if (numberRowOn) null else "1234567890")))
-            add(KeyRow(chars("asdfghjkl", "@#$_&-+()"), lead = 0.5f, trail = 0.5f))
+            add(KeyRow(chars("asdfghjkl", "@#\$_&-+()"), lead = 0.5f, trail = 0.5f))
             add(KeyRow(listOf(shift) + chars("zxcvbnm", "*\"':;!?") + back))
             add(bottomRow(KeySpec(KeyAction.Mode(KbMode.SYMBOLS), "?123", 1.5f), kind))
         }
         KbMode.SYMBOLS -> listOf(
             KeyRow(chars("1234567890")),
-            KeyRow(chars("@#$_&-+()/")),
+            KeyRow(chars("@#\$_&-+()/")),
             KeyRow(listOf(KeySpec(KeyAction.Mode(KbMode.SYMBOLS2), "=\\<", 1.5f)) + chars("*\"':;!?") + back),
             bottomRow(KeySpec(KeyAction.Mode(KbMode.ALPHA), "ABC", 1.5f), kind),
         )
