@@ -40,6 +40,13 @@ import android.content.Intent
 import android.view.inputmethod.InputMethodManager
 import dev.holo.launcher.data.KeyDepthProfile
 import dev.holo.launcher.data.KeyHaptics
+import dev.holo.launcher.data.KbBoot
+import dev.holo.launcher.data.KbDeckStyle
+import dev.holo.launcher.data.KbPreset
+import dev.holo.launcher.data.KbSurface
+import dev.holo.launcher.data.KeyStyle
+import dev.holo.launcher.data.LabelCase
+import dev.holo.launcher.keyboard.KbSignals
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -290,27 +297,79 @@ private fun KeyboardSection(s: HoloSettings, set: Setter, m: LauncherModel) {
         context.getSystemService(InputMethodManager::class.java)?.showInputMethodPicker()
     }
     TestFieldRow()
-    Label("MOTION & DEPTH")
-    ToggleRow("3D keys", "Keys tilt and shift in depth as the phone moves", s.kbTilt) { v -> set { it.copy(kbTilt = v) } }
+    Label("PRESETS")
+    KbPresetRow { p -> set { p.applyTo(it) } }
+    Label("STARTUP")
+    ChoiceRow("Startup animation", KbBoot.entries, s.kbBootStyle, { it.label }) { v ->
+        set { it.copy(kbBootStyle = v) }
+        KbSignals.replay.value++
+    }
+    SliderRow("Animation speed", s.kbBootSpeed, 0.4f..2.5f, times) { v -> set { it.copy(kbBootSpeed = v) } }
+    ActionRow("Replay startup", "REPLAY", false) { KbSignals.replay.value++ }
+    Label("SHAPE")
+    ChoiceRow("Surface", KbSurface.entries, s.kbSurface, { it.label }) { v -> set { it.copy(kbSurface = v) } }
+    SliderRow("Curvature", s.kbCurve, 0f..1.6f, pct) { v -> set { it.copy(kbCurve = v) } }
+    SliderRow("Key angle toward centre", s.kbKeyAngle, 0f..2f, times) { v -> set { it.copy(kbKeyAngle = v) } }
+    SliderRow("Lens (perspective)", s.kbLens, 0.4f..2.5f, times) { v -> set { it.copy(kbLens = v) } }
+    ChoiceRow("Key float", KeyDepthProfile.entries, s.kbDepthProfile, { it.label }) { v -> set { it.copy(kbDepthProfile = v) } }
+    SliderRow("Float height", s.kbDepth, 0f..2f, pct) { v -> set { it.copy(kbDepth = v) } }
+    SliderRow("Key thickness", s.kbThickness, 0f..2f, pct) { v -> set { it.copy(kbThickness = v) } }
+    SliderRow("Press depth", s.kbPressDepth, 0f..1.5f, pct) { v -> set { it.copy(kbPressDepth = v) } }
+    Label("MOTION")
+    ToggleRow("3D motion", "The keyboard turns in 3D as the phone moves", s.kbTilt) { v -> set { it.copy(kbTilt = v) } }
     SliderRow("Max tilt", s.kbMaxTilt, 0f..30f, deg) { v -> set { it.copy(kbMaxTilt = v) } }
-    ChoiceRow("Depth profile", KeyDepthProfile.entries, s.kbDepthProfile, { it.label }) { v -> set { it.copy(kbDepthProfile = v) } }
-    SliderRow("Depth separation", s.kbDepth, 0f..2.5f, pct) { v -> set { it.copy(kbDepth = v) } }
-    SliderRow("Key thickness", s.kbThickness, 0f..1.5f, pct) { v -> set { it.copy(kbThickness = v) } }
-    Label("LOOK")
+    Label("KEYS")
+    ChoiceRow("Key style", KeyStyle.entries, s.kbKeyStyle, { it.label }) { v -> set { it.copy(kbKeyStyle = v) } }
+    SliderRow("Key opacity", s.kbKeyOpacity, 0f..1f, pct) { v -> set { it.copy(kbKeyOpacity = v) } }
+    SliderRow("Corner radius", s.kbKeyRadius, 0f..22f, dp0) { v -> set { it.copy(kbKeyRadius = v) } }
+    SliderRow("Border width", s.kbBorderWidth, 0f..3f, dp1) { v -> set { it.copy(kbBorderWidth = v) } }
+    SliderRow("Edge glow", s.kbBorderGlow, 0f..1.5f, pct) { v -> set { it.copy(kbBorderGlow = v) } }
     SliderRow("Key height", s.kbKeyHeight, 36f..64f, dp0) { v -> set { it.copy(kbKeyHeight = v) } }
     SliderRow("Key gap", s.kbKeyGap, 2f..12f, dp1) { v -> set { it.copy(kbKeyGap = v) } }
+    SliderRow("Function key contrast", s.kbFnTint, 0f..1f, pct) { v -> set { it.copy(kbFnTint = v) } }
+    ToggleRow("Accent enter key", null, s.kbEnterAccent) { v -> set { it.copy(kbEnterAccent = v) } }
+    Label("LABELS")
+    ToggleRow("Use launcher font", null, s.kbFollowFont) { v -> set { it.copy(kbFollowFont = v) } }
+    if (!s.kbFollowFont) FontRow("Keyboard font", s.kbFont) { f -> set { it.copy(kbFont = f) } }
+    ChoiceRow("Letter case", LabelCase.entries, s.kbLabelCase, { it.name }) { v -> set { it.copy(kbLabelCase = v) } }
+    SliderRow("Label size", s.kbLabelScale, 0.7f..1.4f, times) { v -> set { it.copy(kbLabelScale = v) } }
+    SliderRow("Label glow", s.kbLabelGlow, 0f..1f, pct) { v -> set { it.copy(kbLabelGlow = v) } }
+    ToggleRow("Symbol badges", "Long-press symbols shown as small tags, like item tiers", s.kbAltBadges) { v -> set { it.copy(kbAltBadges = v) } }
+    Label("COLOUR")
+    ToggleRow("Custom keyboard colours", "Off follows the launcher theme", s.kbCustomColors) { v -> set { it.copy(kbCustomColors = v) } }
+    if (s.kbCustomColors) {
+        ColorRow("Accent", s.kbAccent, brightSwatches) { c -> set { it.copy(kbAccent = c) } }
+        ColorRow("Key colour", s.kbKeyColor, darkSwatches) { c -> set { it.copy(kbKeyColor = c) } }
+        ColorRow("Label colour", s.kbLabelColor, brightSwatches) { c -> set { it.copy(kbLabelColor = c) } }
+    }
+    Label("LIGHTING")
+    SliderRow("Specular highlights", s.kbSpecular, 0f..1f, pct) { v -> set { it.copy(kbSpecular = v) } }
+    SliderRow("Shading", s.kbShade, 0f..1f, pct) { v -> set { it.copy(kbShade = v) } }
+    SliderRow("Shadows", s.kbShadow, 0f..1f, pct) { v -> set { it.copy(kbShadow = v) } }
+    SliderRow("Depth fade", s.kbDepthFade, 0f..1f, pct) { v -> set { it.copy(kbDepthFade = v) } }
+    Label("DECK")
+    ChoiceRow("Deck", KbDeckStyle.entries, s.kbDeckStyle, { it.label }) { v -> set { it.copy(kbDeckStyle = v) } }
     SliderRow("Deck opacity", s.kbDeck, 0f..1f, pct) { v -> set { it.copy(kbDeck = v) } }
-    SliderRow("Label size", s.kbLabelScale, 0.8f..1.3f, times) { v -> set { it.copy(kbLabelScale = v) } }
+    SliderRow("Backdrop shade", s.kbBackdrop, 0f..1f, pct) { v -> set { it.copy(kbBackdrop = v) } }
+    ToggleRow("Holo grid", "A grid on the curved surface behind the keys", s.kbGrid) { v -> set { it.copy(kbGrid = v) } }
+    ToggleRow("Header hatching", null, s.kbHatch) { v -> set { it.copy(kbHatch = v) } }
     SliderRow("Bottom padding", s.kbBottomPad, 0f..48f, dp0) { v -> set { it.copy(kbBottomPad = v) } }
     Label("FEEL")
     ToggleRow("Key preview", "Hologram plate above the key you press", s.kbPopup) { v -> set { it.copy(kbPopup = v) } }
     ToggleRow("Press glow", "Glow and a ring as each key springs back", s.kbPressFx) { v -> set { it.copy(kbPressFx = v) } }
-    ToggleRow("Boot animation", "Keys rise out of the deck when the keyboard opens", s.kbBootAnim) { v -> set { it.copy(kbBootAnim = v) } }
     ChoiceRow("Vibration", KeyHaptics.entries, s.kbHaptics, { it.name }) { v -> set { it.copy(kbHaptics = v) } }
     ToggleRow("Key sounds", null, s.kbSound) { v -> set { it.copy(kbSound = v) } }
     ToggleRow("Number row", null, s.kbNumberRow) { v -> set { it.copy(kbNumberRow = v) } }
     ToggleRow("Auto capitals", null, s.kbAutoCaps) { v -> set { it.copy(kbAutoCaps = v) } }
     ToggleRow("Double-space full stop", null, s.kbDoubleSpacePeriod) { v -> set { it.copy(kbDoubleSpacePeriod = v) } }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun KbPresetRow(onPick: (KbPreset) -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        KbPreset.entries.forEach { p -> SectionChip(p.label.uppercase(), false) { onPick(p) } }
+    }
 }
 
 @Composable

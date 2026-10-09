@@ -17,10 +17,27 @@ enum class ClockMode { SYSTEM, H24, H12 }
 enum class TopLabel { DATE, CALLSIGN, BOTH }
 
 @Serializable
-/** How far each key floats above the keyboard deck. */
-enum class KeyDepthProfile(val label: String) {
-    FLAT("FLAT"), RAKE("RAKE"), DOME("DOME"), ISLANDS("ISLANDS"), SCATTER("SCATTER"),
+/** Shape of the surface the keys sit on. */
+enum class KbSurface(val label: String) {
+    BOWL("BOWL"), CYLINDER("CYLINDER"), FLAT("FLAT"), DOME("DOME"), SLOPE("SLOPE"),
 }
+
+/** Extra float of individual keys above the surface. */
+enum class KeyDepthProfile(val label: String) {
+    UNIFORM("UNIFORM"), RAKE("RAKE"), ISLANDS("ISLANDS"), SCATTER("SCATTER"),
+}
+
+enum class KeyStyle(val label: String) {
+    TILE("TILE"), GLASS("GLASS"), WIRE("WIRE"), SOLID("SOLID"), BRACKET("BRACKET"),
+}
+
+enum class KbBoot(val label: String) {
+    NONE("NONE"), RISE("RISE"), ASSEMBLE("ASSEMBLE"), SWEEP("SCAN"), UNFOLD("UNFOLD"), FLICKER("FLICKER"), CASCADE("CASCADE"),
+}
+
+enum class KbDeckStyle(val label: String) { NONE("NONE"), GLASS("GLASS"), FRAME("FRAME") }
+
+enum class LabelCase { AUTO, UPPER, LOWER }
 
 enum class KeyHaptics { OFF, LIGHT, FIRM }
 
@@ -111,26 +128,105 @@ data class HoloSettings(
     val lowPower: Boolean = false,
     val operatorName: String = "OPERATOR-01",
     val setupDismissed: Boolean = false,
-    // keyboard
+    // keyboard: motion + shape
     val kbTilt: Boolean = true,
     val kbMaxTilt: Float = 8f,
-    val kbDepthProfile: KeyDepthProfile = KeyDepthProfile.RAKE,
-    val kbDepth: Float = 1f,
+    val kbSurface: KbSurface = KbSurface.BOWL,
+    val kbCurve: Float = 0.85f,
+    val kbKeyAngle: Float = 1.15f,
+    val kbLens: Float = 1.25f,
+    val kbDepthProfile: KeyDepthProfile = KeyDepthProfile.UNIFORM,
+    val kbDepth: Float = 0.5f,
     val kbThickness: Float = 0.6f,
+    val kbPressDepth: Float = 0.6f,
+    // keyboard: keys
+    val kbKeyStyle: KeyStyle = KeyStyle.TILE,
+    val kbKeyRadius: Float = 8f,
     val kbKeyHeight: Float = 46f,
     val kbKeyGap: Float = 5f,
-    val kbDeck: Float = 0.9f,
+    val kbKeyOpacity: Float = 0.9f,
+    val kbBorderWidth: Float = 1.2f,
+    val kbBorderGlow: Float = 0.4f,
+    // keyboard: labels
     val kbLabelScale: Float = 1f,
+    val kbFollowFont: Boolean = true,
+    val kbFont: FontChoice = FontChoice.RAJDHANI,
+    val kbLabelCase: LabelCase = LabelCase.AUTO,
+    val kbLabelGlow: Float = 0.35f,
+    val kbAltBadges: Boolean = true,
+    // keyboard: colour + light
+    val kbCustomColors: Boolean = false,
+    val kbAccent: Long = 0xFF9CC7EC,
+    val kbKeyColor: Long = 0xFF18212C,
+    val kbLabelColor: Long = 0xFFE8EEF5,
+    val kbFnTint: Float = 0.5f,
+    val kbEnterAccent: Boolean = true,
+    val kbSpecular: Float = 0.6f,
+    val kbShade: Float = 0.5f,
+    val kbShadow: Float = 0.5f,
+    val kbDepthFade: Float = 0.3f,
+    // keyboard: deck
+    val kbDeckStyle: KbDeckStyle = KbDeckStyle.FRAME,
+    val kbDeck: Float = 0.85f,
+    val kbBackdrop: Float = 0.35f,
+    val kbGrid: Boolean = true,
+    val kbHatch: Boolean = true,
+    // keyboard: startup
+    val kbBootStyle: KbBoot = KbBoot.ASSEMBLE,
+    val kbBootSpeed: Float = 1f,
+    // keyboard: feel
     val kbBottomPad: Float = 4f,
     val kbNumberRow: Boolean = false,
     val kbPopup: Boolean = true,
     val kbPressFx: Boolean = true,
-    val kbBootAnim: Boolean = true,
     val kbHaptics: KeyHaptics = KeyHaptics.LIGHT,
     val kbSound: Boolean = false,
     val kbAutoCaps: Boolean = true,
     val kbDoubleSpacePeriod: Boolean = true,
 )
+
+/** One-tap keyboard looks. Only keyboard look fields change. */
+enum class KbPreset(val label: String) {
+    INVENTORY("Inventory"), HOLOGRAM("Hologram"), COCKPIT("Cockpit"), MINIMAL("Minimal"), ARENA("Arena");
+
+    fun applyTo(s: HoloSettings): HoloSettings = when (this) {
+        INVENTORY -> s.copy(
+            kbSurface = KbSurface.BOWL, kbCurve = 0.85f, kbKeyAngle = 1.15f, kbLens = 1.25f, kbDepthProfile = KeyDepthProfile.UNIFORM,
+            kbDepth = 0.5f, kbThickness = 0.6f, kbKeyStyle = KeyStyle.TILE, kbKeyRadius = 8f, kbKeyOpacity = 0.9f,
+            kbBorderWidth = 1.2f, kbBorderGlow = 0.4f, kbLabelGlow = 0.35f, kbAltBadges = true, kbSpecular = 0.6f,
+            kbShade = 0.5f, kbShadow = 0.5f, kbDepthFade = 0.3f, kbDeckStyle = KbDeckStyle.FRAME, kbDeck = 0.85f,
+            kbGrid = true, kbHatch = true, kbBootStyle = KbBoot.ASSEMBLE, kbBackdrop = 0.35f,
+        )
+        HOLOGRAM -> s.copy(
+            kbSurface = KbSurface.BOWL, kbCurve = 0.9f, kbKeyAngle = 1.2f, kbLens = 1.3f, kbDepthProfile = KeyDepthProfile.SCATTER,
+            kbDepth = 0.6f, kbThickness = 0.15f, kbKeyStyle = KeyStyle.WIRE, kbKeyRadius = 6f, kbKeyOpacity = 0.35f,
+            kbBorderWidth = 1.2f, kbBorderGlow = 0.9f, kbLabelGlow = 0.8f, kbAltBadges = false, kbSpecular = 0.3f,
+            kbShade = 0.2f, kbShadow = 0f, kbDepthFade = 0.5f, kbDeckStyle = KbDeckStyle.NONE, kbDeck = 0.4f,
+            kbGrid = true, kbHatch = false, kbBootStyle = KbBoot.FLICKER, kbBackdrop = 0.5f,
+        )
+        COCKPIT -> s.copy(
+            kbSurface = KbSurface.CYLINDER, kbCurve = 0.75f, kbKeyAngle = 1f, kbLens = 1.1f, kbDepthProfile = KeyDepthProfile.RAKE,
+            kbDepth = 0.7f, kbThickness = 1.1f, kbKeyStyle = KeyStyle.SOLID, kbKeyRadius = 5f, kbKeyOpacity = 1f,
+            kbBorderWidth = 1f, kbBorderGlow = 0.2f, kbLabelGlow = 0.2f, kbAltBadges = true, kbSpecular = 0.8f,
+            kbShade = 0.7f, kbShadow = 0.8f, kbDepthFade = 0.2f, kbDeckStyle = KbDeckStyle.FRAME, kbDeck = 0.95f,
+            kbGrid = false, kbHatch = true, kbBootStyle = KbBoot.UNFOLD, kbBackdrop = 0.3f,
+        )
+        MINIMAL -> s.copy(
+            kbSurface = KbSurface.FLAT, kbCurve = 0f, kbKeyAngle = 0f, kbLens = 1f, kbDepthProfile = KeyDepthProfile.UNIFORM,
+            kbDepth = 0.3f, kbThickness = 0.3f, kbKeyStyle = KeyStyle.GLASS, kbKeyRadius = 10f, kbKeyOpacity = 0.85f,
+            kbBorderWidth = 1f, kbBorderGlow = 0.15f, kbLabelGlow = 0.1f, kbAltBadges = false, kbSpecular = 0.4f,
+            kbShade = 0.3f, kbShadow = 0.4f, kbDepthFade = 0f, kbDeckStyle = KbDeckStyle.GLASS, kbDeck = 0.9f,
+            kbGrid = false, kbHatch = false, kbBootStyle = KbBoot.RISE, kbBackdrop = 0f,
+        )
+        ARENA -> s.copy(
+            kbSurface = KbSurface.BOWL, kbCurve = 1.3f, kbKeyAngle = 1.5f, kbLens = 1.6f, kbDepthProfile = KeyDepthProfile.ISLANDS,
+            kbDepth = 0.8f, kbThickness = 0.9f, kbKeyStyle = KeyStyle.BRACKET, kbKeyRadius = 4f, kbKeyOpacity = 0.6f,
+            kbBorderWidth = 1.6f, kbBorderGlow = 0.6f, kbLabelGlow = 0.5f, kbAltBadges = true, kbSpecular = 0.7f,
+            kbShade = 0.6f, kbShadow = 0.6f, kbDepthFade = 0.6f, kbDeckStyle = KbDeckStyle.FRAME, kbDeck = 0.7f,
+            kbGrid = true, kbHatch = true, kbBootStyle = KbBoot.CASCADE, kbBackdrop = 0.45f,
+        )
+    }
+}
 
 /** Colour + font looks that can be applied in one tap. Layout and motion settings are kept. */
 enum class ThemePreset(val label: String) {
